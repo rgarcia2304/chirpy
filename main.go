@@ -11,6 +11,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.Dir(filePathRoot)))
+	mux.Handle("/assets", http.FileServer(http.Dir("./assets/logo.png")))
 
 	s := &http.Server{
 		Addr: port,
