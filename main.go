@@ -18,6 +18,14 @@ func (cfg *apiConfig) requestsHandler(w http.ResponseWriter, r *http.Request){
 		w.Write([]byte(message))
 }
 
+func (cfg *apiConfig) resetHandler( w http.ResponseWriter, r *http.Request){
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	cfg.fileserverHits.Store(0)
+	message := "Reset Completed"
+	w.Write([]byte(message))
+}
+
 func main() {
 	const filePathRoot = "."
 	const port = ":8080"
@@ -29,13 +37,15 @@ func main() {
 	mux.Handle("/app/", apiCfg.middlewareMetricInc(http.StripPrefix("/app", http.FileServer(http.Dir(filePathRoot)))))
 	//mux.Handle("/assets", http.FileServer(http.Dir("/assets/")))
 
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request){
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request){
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Ok"))
 	})
 
-	mux.HandleFunc("/metrics", apiCfg.requestsHandler)
+	mux.HandleFunc("GET /metrics", apiCfg.requestsHandler)
+
+	mux.HandleFunc("POST /reset", apiCfg.resetHandler)
 
 	s := &http.Server{
 		Addr: port,
