@@ -5,6 +5,7 @@ import(
 	"log"
 	"fmt"
 	"sync/atomic"
+	"encoding/json"
 )
 type apiConfig struct{
 	fileserverHits atomic.Int32
@@ -23,6 +24,59 @@ func (cfg *apiConfig) resetHandler( w http.ResponseWriter, r *http.Request){
 	cfg.fileserverHits.Store(0)
 	message := "Reset Completed"
 	w.Write([]byte(message))
+}
+
+func(cfg *apiConfig) respondWithError(w http.ResponseWriter, code int, msg string){
+	type errResp struct{
+		Error string `json: "error"`
+	}
+
+	respBody := errResp{Error: msg}
+	data, err := json.Marshal(respBody)
+	if err != nil{
+		log.Printf("Error marshalling JSON: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	w.WriteHeader(code)
+	w.Write(data)
+	return
+}
+
+func(cfg *apiConfig) validateChirpHandler(w http.ResponseWriter, r *http.Request){
+	type parameters struct{
+		Body string `json: "body"`
+	}
+	
+	type okResp struct{
+		Valid bool `json: "valid"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil{
+		log.Printf("Error marshalling data %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	if len(params.Body) > 140{
+		cfg.respondWithError(w , 400, "Chirp is too long")
+		return
+	}
+	
+	respBody := okResp{Valid: true}
+	data, err := json.Marshal(respBody)
+	if err != nil{
+		log.Printf("Error marshalling JSON %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	w.WriteHeader(200)
+	w.Write((data))
+
 }
 
 func main() {
@@ -45,6 +99,8 @@ func main() {
 	mux.HandleFunc("GET /admin/metrics", apiCfg.requestsHandler)
 
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetHandler)
+
+	mux.HandleFunc("POST /api/validate_chirp", apiCfg.validateChirpHandler)
 
 	s := &http.Server{
 		Addr: port,
