@@ -44,6 +44,16 @@ func(cfg *apiConfig) respondWithError(w http.ResponseWriter, code int, msg strin
 	return
 }
 
+func(cfg *apiConfig) respondWithJSON(w http.ResponseWriter, code int, payload interface{}){
+	data, err := json.Marshal(payload)
+	if err != nil{
+		log.Printf("Error marshalling JSON %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	w.WriteHeader(code)
+	w.Write(data)	
+}
 func(cfg *apiConfig) validateChirpHandler(w http.ResponseWriter, r *http.Request){
 	type parameters struct{
 		Body string `json: "body"`
@@ -68,15 +78,7 @@ func(cfg *apiConfig) validateChirpHandler(w http.ResponseWriter, r *http.Request
 	}
 	
 	respBody := okResp{Valid: true}
-	data, err := json.Marshal(respBody)
-	if err != nil{
-		log.Printf("Error marshalling JSON %s", err)
-		w.WriteHeader(500)
-		return
-	}
-	w.WriteHeader(200)
-	w.Write((data))
-
+	cfg.respondWithJSON(w, 200, respBody)
 }
 
 func main() {
