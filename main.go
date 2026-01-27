@@ -5,16 +5,15 @@ import(
 	"log"
 	"fmt"
 	"sync/atomic"
-	"strconv"
 )
 type apiConfig struct{
 	fileserverHits atomic.Int32
 }
 
 func (cfg *apiConfig) requestsHandler(w http.ResponseWriter, r *http.Request){
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		message := "Hits: " + strconv.FormatInt(int64(cfg.fileserverHits.Load()), 10)
+		message := fmt.Sprintf("<html><body><h1>Welcome Chirpy, Admin </h1><p>Chirpy has visited %d</p></body></html>", cfg.fileserverHits.Load())
 		w.Write([]byte(message))
 }
 
@@ -37,15 +36,15 @@ func main() {
 	mux.Handle("/app/", apiCfg.middlewareMetricInc(http.StripPrefix("/app", http.FileServer(http.Dir(filePathRoot)))))
 	//mux.Handle("/assets", http.FileServer(http.Dir("/assets/")))
 
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request){
+	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request){
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Ok"))
 	})
 
-	mux.HandleFunc("GET /metrics", apiCfg.requestsHandler)
+	mux.HandleFunc("GET /admin/metrics", apiCfg.requestsHandler)
 
-	mux.HandleFunc("POST /reset", apiCfg.resetHandler)
+	mux.HandleFunc("POST /admin/reset", apiCfg.resetHandler)
 
 	s := &http.Server{
 		Addr: port,
