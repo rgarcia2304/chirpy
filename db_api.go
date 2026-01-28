@@ -6,6 +6,8 @@ import(
 	"time"
 	"encoding/json"
 	"log"
+	"github.com/rgarcia2304/chirpy/internal/database"
+
 )
 
 func (cfg *apiConfig) userHandler(w http.ResponseWriter, r *http.Request){
@@ -38,9 +40,9 @@ func (cfg *apiConfig) userHandler(w http.ResponseWriter, r *http.Request){
 	}
 	
 	
-	resp := okResponse{ID: createUser.ID.UUID, CreatedAt: createUser.CreatedAt, UpdatedAt: createUser.UpdatedAt, Email: createUser.Email}
+	resp := okResponse{ID: createUser.ID, CreatedAt: createUser.CreatedAt, UpdatedAt: createUser.UpdatedAt, Email: createUser.Email}
 	log.Printf("This is the response %v", resp)
-	cfg.respondWithJSON(w, 200, resp)
+	cfg.respondWithJSON(w, 201, resp)
 
 }
 
@@ -58,3 +60,58 @@ func (cfg *apiConfig) userDeleteHandler(w http.ResponseWriter, r *http.Request){
 	}
 
 }
+
+func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request){
+	type parameters struct{
+		Body string `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+	
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil{
+		log.Printf("Error marshalling data %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	if len(params.Body) > 140{
+		cfg.respondWithError(w , 400, "Chirp is too long")
+		return
+	}
+	
+	msg, profane := profaneCheck(params.Body)
+	if profane{
+		//create the chirp in the database
+		createdChirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
+			Body: msg, 
+			UserID: params.UserID,
+		})
+		
+		if err != nil{
+			log.Printf("Error creating the chirp because %s", err)
+			w.WriteHeader(500)
+			return
+		}
+
+		cfg.respondWithJSON(w, 201, createdChirp)
+	}else{	
+		createdChirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
+			Body: params.Body, 
+			UserID: params.UserID,
+		})
+
+		if err != nil{
+			log.Printf("Error creating the user because %s", err)
+			w.WriteHeader(500)
+			return
+		}
+		
+		cfg.respondWithJSON(w, 201, createdChirp)
+	}	
+}
+
+
+
+

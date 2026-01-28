@@ -68,43 +68,6 @@ func(cfg *apiConfig) respondWithJSON(w http.ResponseWriter, code int, payload in
 	w.Write([]byte("\n"))
 }
 
-func(cfg *apiConfig) validateChirpHandler(w http.ResponseWriter, r *http.Request){
-	type parameters struct{
-		Body string `json:"body"`
-	}
-	
-	type okResp struct{
-		Body string `json:"body"`
-	}
-
-	type cleanedResp struct{
-		CleanedBody string `json:"body"`
-	}
-
-	decoder := json.NewDecoder(r.Body)
-	params := parameters{}
-	err := decoder.Decode(&params)
-	if err != nil{
-		log.Printf("Error marshalling data %s", err)
-		w.WriteHeader(500)
-		return
-	}
-
-	if len(params.Body) > 140{
-		cfg.respondWithError(w , 400, "Chirp is too long")
-		return
-	}
-	
-	msg, profane := profaneCheck(params.Body)
-	if profane{
-		resp := cleanedResp{CleanedBody: msg}
-		cfg.respondWithJSON(w, 200, resp)
-	}else{	
-		resp := okResp{Body: params.Body}
-		cfg.respondWithJSON(w, 200, resp)
-	}
-}
-
 
 func main() {
 	//load the env file 
@@ -137,9 +100,9 @@ func main() {
 
 	mux.HandleFunc("POST /admin/reset", apiCfg.userDeleteHandler)
 
-	mux.HandleFunc("POST /api/validate_chirp", apiCfg.validateChirpHandler)
-
 	mux.HandleFunc("POST /api/users", apiCfg.userHandler)
+
+	mux.HandleFunc("POST /api/chirps", apiCfg.createChirpsHandler)
 
 
 	s := &http.Server{
