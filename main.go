@@ -1,14 +1,20 @@
 package main 
 
+import _ "github.com/lib/pq"
+
 import(
 	"net/http"
 	"log"
 	"fmt"
 	"sync/atomic"
 	"encoding/json"
+	"godotenv"
+	"github.com/rgarcia2304/chirpy/internal/database"
+	"database/sql"
 )
 type apiConfig struct{
 	fileserverHits atomic.Int32
+	db *database.Queries
 }
 
 func (cfg *apiConfig) requestsHandler(w http.ResponseWriter, r *http.Request){
@@ -95,6 +101,12 @@ func(cfg *apiConfig) validateChirpHandler(w http.ResponseWriter, r *http.Request
 
 
 func main() {
+	//load the env file 
+	godotenv.Load()
+	dbURL := os.Getenv("DB_URL")
+	db, err := sql.Open("postgres", dbURL)
+	dbQueries := database.New(db)
+
 	const filePathRoot = "."
 	const port = ":8080"
 	
