@@ -51,16 +51,22 @@ func(cfg *apiConfig) respondWithJSON(w http.ResponseWriter, code int, payload in
 		w.WriteHeader(500)
 		return
 	}
+	
 	w.WriteHeader(code)
-	w.Write(data)	
+	w.Write(data)
 }
+
 func(cfg *apiConfig) validateChirpHandler(w http.ResponseWriter, r *http.Request){
 	type parameters struct{
-		Body string `json: "body"`
+		Body string `json:"body"`
 	}
 	
 	type okResp struct{
-		Valid bool `json: "valid"`
+		Body string `json:"body"`
+	}
+
+	type cleanedResp struct{
+		CleanedBody string `json:"body"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -77,9 +83,16 @@ func(cfg *apiConfig) validateChirpHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	
-	respBody := okResp{Valid: true}
-	cfg.respondWithJSON(w, 200, respBody)
+	msg, profane := profaneCheck(params.Body)
+	if profane{
+		resp := cleanedResp{CleanedBody: msg}
+		cfg.respondWithJSON(w, 200, resp)
+	}else{	
+		resp := okResp{Body: params.Body}
+		cfg.respondWithJSON(w, 200, resp)
+	}
 }
+
 
 func main() {
 	const filePathRoot = "."
