@@ -8,9 +8,10 @@ import(
 	"fmt"
 	"sync/atomic"
 	"encoding/json"
-	"godotenv"
+	"os"
 	"github.com/rgarcia2304/chirpy/internal/database"
 	"database/sql"
+	"github.com/joho/godotenv"
 )
 type apiConfig struct{
 	fileserverHits atomic.Int32
@@ -51,6 +52,7 @@ func(cfg *apiConfig) respondWithError(w http.ResponseWriter, code int, msg strin
 }
 
 func(cfg *apiConfig) respondWithJSON(w http.ResponseWriter, code int, payload interface{}){
+	
 	data, err := json.Marshal(payload)
 	if err != nil{
 		log.Printf("Error marshalling JSON %s", err)
@@ -105,13 +107,16 @@ func main() {
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
 	db, err := sql.Open("postgres", dbURL)
+	if err != nil{
+		fmt.Println(err)
+	}
 	dbQueries := database.New(db)
 
 	const filePathRoot = "."
 	const port = ":8080"
 	
 	//initialize the fileserverHits
-	apiCfg := apiConfig{}
+	apiCfg := apiConfig{db: dbQueries}
 
 	mux := http.NewServeMux()
 	mux.Handle("/app/", apiCfg.middlewareMetricInc(http.StripPrefix("/app", http.FileServer(http.Dir(filePathRoot)))))
@@ -128,6 +133,8 @@ func main() {
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetHandler)
 
 	mux.HandleFunc("POST /api/validate_chirp", apiCfg.validateChirpHandler)
+
+	mux.HandleFunc("POST /api/users", apiCfg.userHandler)
 
 	s := &http.Server{
 		Addr: port,
