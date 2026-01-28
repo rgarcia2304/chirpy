@@ -16,6 +16,7 @@ import(
 type apiConfig struct{
 	fileserverHits atomic.Int32
 	db *database.Queries
+	platform string
 }
 
 func (cfg *apiConfig) requestsHandler(w http.ResponseWriter, r *http.Request){
@@ -52,7 +53,7 @@ func(cfg *apiConfig) respondWithError(w http.ResponseWriter, code int, msg strin
 }
 
 func(cfg *apiConfig) respondWithJSON(w http.ResponseWriter, code int, payload interface{}){
-	
+	w.Header().Set("Content-Type", "application/json")	
 	data, err := json.Marshal(payload)
 	if err != nil{
 		log.Printf("Error marshalling JSON %s", err)
@@ -60,8 +61,11 @@ func(cfg *apiConfig) respondWithJSON(w http.ResponseWriter, code int, payload in
 		return
 	}
 	
+	
+    	log.Printf("responding %d with: %s", code, string(data))
 	w.WriteHeader(code)
 	w.Write(data)
+	w.Write([]byte("\n"))
 }
 
 func(cfg *apiConfig) validateChirpHandler(w http.ResponseWriter, r *http.Request){
@@ -106,6 +110,7 @@ func main() {
 	//load the env file 
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
+	plat := os.Getenv("PLATFORM")
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil{
 		fmt.Println(err)
@@ -116,7 +121,7 @@ func main() {
 	const port = ":8080"
 	
 	//initialize the fileserverHits
-	apiCfg := apiConfig{db: dbQueries}
+	apiCfg := apiConfig{db: dbQueries, platform: plat}
 
 	mux := http.NewServeMux()
 	mux.Handle("/app/", apiCfg.middlewareMetricInc(http.StripPrefix("/app", http.FileServer(http.Dir(filePathRoot)))))
@@ -130,11 +135,12 @@ func main() {
 
 	mux.HandleFunc("GET /admin/metrics", apiCfg.requestsHandler)
 
-	mux.HandleFunc("POST /admin/reset", apiCfg.resetHandler)
+	mux.HandleFunc("POST /admin/reset", apiCfg.userDeleteHandler)
 
 	mux.HandleFunc("POST /api/validate_chirp", apiCfg.validateChirpHandler)
 
 	mux.HandleFunc("POST /api/users", apiCfg.userHandler)
+
 
 	s := &http.Server{
 		Addr: port,

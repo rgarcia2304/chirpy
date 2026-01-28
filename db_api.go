@@ -43,3 +43,18 @@ func (cfg *apiConfig) userHandler(w http.ResponseWriter, r *http.Request){
 	cfg.respondWithJSON(w, 200, resp)
 
 }
+
+func (cfg *apiConfig) userDeleteHandler(w http.ResponseWriter, r *http.Request){
+	//call the delete directly
+	if cfg.platform != "dev"{
+		w.WriteHeader(403)
+		return 
+	}
+	err := cfg.db.DeleteUsers(r.Context())
+	if err != nil{
+		log.Printf("Error creating the user because %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+}
