@@ -46,6 +46,31 @@ func (cfg *apiConfig) userHandler(w http.ResponseWriter, r *http.Request){
 
 }
 
+func (cfg *apiConfig) getChirpByIDHandler( w http.ResponseWriter, r *http.Request){
+
+	type ChirpResp struct {
+		ID uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body string `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+	parsedUUID, err := uuid.Parse(r.PathValue("chirpID"))
+	if err != nil {
+		log.Fatalf("failed to parse UUID string: %v", err)
+	}	
+	log.Printf("The path value is ", r.PathValue("chirpID"))
+	chirp, err := cfg.db.GetChirpByID(r.Context(), parsedUUID)
+	if err != nil{
+		cfg.respondWithError(w, 404, "Resource not found")
+		return	
+	}
+
+	result := ChirpResp{ID: chirp.ID, CreatedAt: chirp.CreatedAt, UpdatedAt: chirp.UpdatedAt, Body: chirp.Body, UserID: chirp.UserID}
+
+	cfg.respondWithJSON(w, 200, result)
+}
+
 func (cfg *apiConfig) userDeleteHandler(w http.ResponseWriter, r *http.Request){
 	//call the delete directly
 	if cfg.platform != "dev"{

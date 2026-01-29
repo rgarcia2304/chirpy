@@ -6,3 +6,7 @@ RETURNING *;
 -- name: GetChirps :many
 SELECT * from chirps
 ORDER BY created_at;
+
+-- name: GetChirpByID :one
+SELECT * from chirps
+WHERE id = $1 LIMIT 1;
