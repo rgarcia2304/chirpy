@@ -103,6 +103,7 @@ func main() {
 	mux.HandleFunc("POST /api/users", apiCfg.userHandler)
 
 	mux.HandleFunc("POST /api/chirps", apiCfg.createChirpsHandler)
+	mux.HandleFunc("GET /api/chirps", apiCfg.getChirpsHandler)
 
 
 	s := &http.Server{

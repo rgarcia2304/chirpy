@@ -66,6 +66,14 @@ func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request
 		Body string `json:"body"`
 		UserID uuid.UUID `json:"user_id"`
 	}
+
+	type ChirpResp struct{
+		ID uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body string `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
 	
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
@@ -94,8 +102,8 @@ func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request
 			w.WriteHeader(500)
 			return
 		}
-
-		cfg.respondWithJSON(w, 201, createdChirp)
+		resp := ChirpResp{ID: createdChirp.ID, CreatedAt: createdChirp.CreatedAt, UpdatedAt: createdChirp.UpdatedAt, Body: createdChirp.Body, UserID: createdChirp.ID}
+		cfg.respondWithJSON(w, 201, resp)
 	}else{	
 		createdChirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
 			Body: params.Body, 
@@ -107,11 +115,43 @@ func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request
 			w.WriteHeader(500)
 			return
 		}
-		
-		cfg.respondWithJSON(w, 201, createdChirp)
+		resp := ChirpResp{ID: createdChirp.ID, CreatedAt: createdChirp.CreatedAt, UpdatedAt: createdChirp.UpdatedAt, Body: createdChirp.Body, UserID: createdChirp.ID}	
+		cfg.respondWithJSON(w, 201, resp)
 	}	
 }
 
+func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request){
+	
+	
+	type ChirpResp struct {
+		ID uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body string `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
 
+	
+	//get all the chirps resposne from the database
+	chirpsLst, err := cfg.db.GetChirps(r.Context())
+	if err != nil{
+		log.Printf("Error creating the user because %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	responses := make([]ChirpResp, len(chirpsLst))
+	for i, c := range chirpsLst{
+		responses[i] = ChirpResp{
+			ID:        c.ID,
+        		CreatedAt: c.CreatedAt,
+        		UpdatedAt: c.UpdatedAt,
+        		Body:      c.Body,
+        		UserID:    c.UserID,
+		}
+	}
+	cfg.respondWithJSON(w,200, responses)
+
+}
 
 
