@@ -7,12 +7,13 @@ import(
 	"encoding/json"
 	"log"
 	"github.com/rgarcia2304/chirpy/internal/database"
-
+	"github.com/rgarcia2304/chirpy/internal/auth"
 )
 
 func (cfg *apiConfig) userHandler(w http.ResponseWriter, r *http.Request){
 	type parameters struct{
-		Email string `json:"email"`		
+		Password string `json:"password"`
+		Email string `json:"email"`
 	}
 	
 	type okResponse struct{
@@ -31,8 +32,26 @@ func (cfg *apiConfig) userHandler(w http.ResponseWriter, r *http.Request){
 		return 
 	}
 
+	//check that all fields contain relevant info
+	if params.Email == "" || params.Password == ""{
+		cfg.respondWithError(w, 400, "Please provide both email and password.")
+		return
+	}
+
+	//hash the password
+	hashedPassword, err := auth.HashPassword(params.Password)
+	if err != nil{
+		log.Printf("Error hashing password %s", err)
+		w.WriteHeader(500)
+		return 
+	}
+
 	//now incorporate the methods to call the user
-	createUser, err := cfg.db.CreateUser(r.Context(), params.Email)
+	createUser, err := cfg.db.CreateUser(r.Context(), database.CreateUserParams{
+		HashedPassword: hashedPassword,
+		Email: params.Email,
+	})
+
 	if err != nil{
 		log.Printf("Error creating the user because %s", err)
 		w.WriteHeader(500)
@@ -46,6 +65,48 @@ func (cfg *apiConfig) userHandler(w http.ResponseWriter, r *http.Request){
 
 }
 
+func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request){
+	type parameters struct{
+		Password string `json:"password"`
+		Email string `json:"email"`
+	}
+
+	type response struct{
+		ID uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email string `json:"email"`	
+	}
+
+	//unmarshall the parameter data
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil{
+		log.Printf("Error marshalling data %s", err)
+		w.WriteHeader(500)
+		return 
+	}
+
+	//get the user 
+
+	usr, err := cfg.db.GetUserByEmail(r.Context(), params.Email)
+	//now check the password hashes
+	valid, err := auth.CheckPasswordHash(params.Password, usr.HashedPassword)
+	if err != nil{
+		log.Printf("Error with comparing passwords %s", err)
+		w.WriteHeader(500)
+		return 
+	}
+
+	if valid{
+		resp :=  response{ID: usr.ID, CreatedAt: usr.CreatedAt, UpdatedAt: usr.UpdatedAt, Email: usr.Email} 
+		cfg.respondWithJSON(w, 200, resp)
+	}else{
+		cfg.respondWithError(w, 401, "Incorrect email or password")
+	}
+
+}
 func (cfg *apiConfig) getChirpByIDHandler( w http.ResponseWriter, r *http.Request){
 
 	type ChirpResp struct {
