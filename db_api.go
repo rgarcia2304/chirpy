@@ -69,13 +69,15 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request){
 	type parameters struct{
 		Password string `json:"password"`
 		Email string `json:"email"`
+		ExpiresInSeconds int `json:"expires_in_seconds"`
 	}
 
 	type response struct{
 		ID uuid.UUID `json:"id"`
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
-		Email string `json:"email"`	
+		Email string `json:"email"`
+		Token string `json:"token"`
 	}
 
 	//unmarshall the parameter data
@@ -98,13 +100,39 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request){
 		w.WriteHeader(500)
 		return 
 	}
-
-	if valid{
-		resp :=  response{ID: usr.ID, CreatedAt: usr.CreatedAt, UpdatedAt: usr.UpdatedAt, Email: usr.Email} 
-		cfg.respondWithJSON(w, 200, resp)
+	
+	//generate the token for the user 
+	//check if there is a time field
+	if params.ExpiresInSeconds == 0{
+		tokenStr, err := auth.MakeJWT(usr.ID, cfg.jwtSecret, 1*time.Hour)
+		if err != nil{
+			cfg.respondWithError(w, 500, "Error making JWT Token")
+			return
+		}
+		if valid{
+			resp :=  response{ID: usr.ID, CreatedAt: usr.CreatedAt, UpdatedAt: usr.UpdatedAt, Email: usr.Email, Token: tokenStr} 
+			cfg.respondWithJSON(w, 200, resp)
 	}else{
 		cfg.respondWithError(w, 401, "Incorrect email or password")
+		return
 	}
+
+	}else{
+		tokenStr, err := auth.MakeJWT(usr.ID, cfg.jwtSecret, time.Duration(params.ExpiresInSeconds) * time.Second)
+		if err != nil{
+			cfg.respondWithError(w, 500, "Error making JWT Token")
+			return
+		}
+		if valid{
+			resp :=  response{ID: usr.ID, CreatedAt: usr.CreatedAt, UpdatedAt: usr.UpdatedAt, Email: usr.Email, Token: tokenStr} 
+			cfg.respondWithJSON(w, 200, resp)
+	}else{
+			cfg.respondWithError(w, 401, "Incorrect email or password")
+			return
+		}
+	}
+	
+	
 
 }
 func (cfg *apiConfig) getChirpByIDHandler( w http.ResponseWriter, r *http.Request){
@@ -175,8 +203,23 @@ func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	
+	//Have to check that the user has a bearerID that is valid 
+	//get the bearer token from the header
+	//then validate that bearer token 
+	authHeader, err := auth.GetBearerToken(r.Header)
+	if err != nil{
+		cfg.respondWithError(w, 500, "Error getting Authorization Header")
+		return
+	}
+	_, err = auth.ValidateJWT(authHeader, cfg.jwtSecret)
+	if err != nil{
+		cfg.respondWithError(w, 401, "Unauthorized")
+		return
+	}
+
 	msg, profane := profaneCheck(params.Body)
 	if profane{
+		
 		//create the chirp in the database
 		createdChirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
 			Body: msg, 

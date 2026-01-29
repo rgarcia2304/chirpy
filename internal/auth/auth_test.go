@@ -22,3 +22,32 @@ func TestJWTCreation(t *testing.T){
 
 	
 }
+
+func TestJWT_WrongSecretFails(t *testing.T) {
+	userID := uuid.New()
+
+	tokenStr, err := MakeJWT(userID, "secret1", 30*time.Minute)
+	if err != nil {
+		t.Fatalf("MakeJWT error: %v", err)
+	}
+
+	got, err := ValidateJWT(tokenStr, "secret2")
+	if err == nil {
+		t.Fatalf("expected error, got nil (uuid=%v)", got)
+	}
+}
+
+func TestJWT_ExpiredFails(t *testing.T) {
+	userID := uuid.New()
+	secret := "hello"
+
+	tokenStr, err := MakeJWT(userID, secret, -1*time.Minute)
+	if err != nil {
+		t.Fatalf("MakeJWT error: %v", err)
+	}
+
+	_, err = ValidateJWT(tokenStr, secret)
+	if err == nil {
+		t.Fatalf("expected error for expired token, got nil")
+	}
+}

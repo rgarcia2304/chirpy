@@ -17,6 +17,7 @@ type apiConfig struct{
 	fileserverHits atomic.Int32
 	db *database.Queries
 	platform string
+	jwtSecret string
 }
 
 func (cfg *apiConfig) requestsHandler(w http.ResponseWriter, r *http.Request){
@@ -74,6 +75,7 @@ func main() {
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
 	plat := os.Getenv("PLATFORM")
+	jwtScrt := os.Getenv("JWT_SECRET")
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil{
 		fmt.Println(err)
@@ -84,7 +86,7 @@ func main() {
 	const port = ":8080"
 	
 	//initialize the fileserverHits
-	apiCfg := apiConfig{db: dbQueries, platform: plat}
+	apiCfg := apiConfig{db: dbQueries, platform: plat, jwtSecret: jwtScrt}
 
 	mux := http.NewServeMux()
 	mux.Handle("/app/", apiCfg.middlewareMetricInc(http.StripPrefix("/app", http.FileServer(http.Dir(filePathRoot)))))

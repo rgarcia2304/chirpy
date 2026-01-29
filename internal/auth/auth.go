@@ -3,6 +3,8 @@ package auth
 import(
 	"github.com/alexedwards/argon2id"
 	"errors"
+	"net/http"
+	"strings"
 )
 
 func HashPassword(password string) (string, error){
@@ -27,3 +29,16 @@ func CheckPasswordHash(password, hash string) (bool, error){
 		return false, nil
 	}
 }
+
+func GetBearerToken(headers http.Header) (string, error){
+	
+	val := headers.Get("Authorization")
+	if val == ""{
+		return "", errors.New("There was not Authorization string provided")
+	}
+
+	//strip the prefix and remove whitespace
+	trimmed := strings.Trim(val, "Bearer")
+	trimmed = strings.TrimSpace(trimmed)
+	return trimmed, nil
+}	
