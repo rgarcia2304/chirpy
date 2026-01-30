@@ -18,7 +18,7 @@ INSERT INTO refresh_tokens(token, created_at, updated_at, user_id, expires_at, r
 		NOW(),
 		NOW(),
 		$2,
-		NOW() + INTEVAL '60 days',
+		NOW() + INTERVAL '60 days',
 		NULL
 	)
 RETURNING token, created_at, updated_at, user_id, expires_at, revoked_at
@@ -64,7 +64,7 @@ func (q *Queries) GetRefreshToken(ctx context.Context, token string) (RefreshTok
 
 const markTokenRevoked = `-- name: MarkTokenRevoked :one
 UPDATE refresh_tokens
-SET updated_at = NOW, revoked_at = NOW
+SET updated_at = NOW(), revoked_at = NOW()
 WHERE token = $1
 RETURNING token, created_at, updated_at, user_id, expires_at, revoked_at
 `

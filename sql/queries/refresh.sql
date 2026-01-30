@@ -5,7 +5,7 @@ INSERT INTO refresh_tokens(token, created_at, updated_at, user_id, expires_at, r
 		NOW(),
 		NOW(),
 		$2,
-		NOW() + INTEVAL '60 days',
+		NOW() + INTERVAL '60 days',
 		NULL
 	)
 RETURNING *;
@@ -17,6 +17,6 @@ WHERE token = $1;
 
 -- name: MarkTokenRevoked :one
 UPDATE refresh_tokens
-SET updated_at = NOW, revoked_at = NOW
+SET updated_at = NOW(), revoked_at = NOW()
 WHERE token = $1
 RETURNING *;

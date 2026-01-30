@@ -8,6 +8,7 @@ import(
 	"log"
 	"github.com/rgarcia2304/chirpy/internal/database"
 	"github.com/rgarcia2304/chirpy/internal/auth"
+	"strings"
 )
 
 func (cfg *apiConfig) userHandler(w http.ResponseWriter, r *http.Request){
@@ -66,9 +67,23 @@ func (cfg *apiConfig) userHandler(w http.ResponseWriter, r *http.Request){
 }
 
 func (cfg *apiConfig) revokeHandler(w http.ResponseWriter, r *http.Request){
-	refreshToken := r.Header["Bearer"][0]
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == ""{
+		cfg.respondWithError(w, 401, "missing authorization header")
+		return
+	}
+
+	const prefix = "Bearer "
+	
+	if !strings.HasPrefix(authHeader, prefix){
+		cfg.respondWithError(w, 401, "invalid authorization header")
+		return
+	}
+	refreshToken := strings.TrimPrefix(authHeader, prefix)
+
 	_, err := cfg.db.MarkTokenRevoked(r.Context(), refreshToken)
 	if err != nil{
+		log.Printf("The error is %v", err)
 		cfg.respondWithError(w, 401, "Error Revoking Token")
 		return	
 	}
@@ -84,7 +99,19 @@ func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, r *http.Request){
 	type okResp struct{
 		Token string `json:"token"`
 	}
-	refreshToken := r.Header["Bearer"][0]
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == ""{
+		cfg.respondWithError(w, 401, "missing authorization header")
+		return
+	}
+
+	const prefix = "Bearer "
+	
+	if !strings.HasPrefix(authHeader, prefix){
+		cfg.respondWithError(w, 401, "invalid authorization header")
+		return
+	}
+	refreshToken := strings.TrimPrefix(authHeader, prefix)
 	foundToken, err := cfg.db.GetRefreshToken(r.Context(), refreshToken)
 	if err != nil{
 		cfg.respondWithError(w, 401, "Token does not exist")
@@ -161,12 +188,18 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request){
 		}
 		
 		//register the refresh token
-		_, err = cfg.db.CreateRefresh(r.Context(), database.CreateRefreshParams{
+		newRefresh, err := cfg.db.CreateRefresh(r.Context(), database.CreateRefreshParams{
 			Token: rfrshTkn, 
 			UserID: usr.ID,
 		})
 
-		resp :=  response{ID: usr.ID, CreatedAt: usr.CreatedAt, UpdatedAt: usr.UpdatedAt, Email: usr.Email, Token: tokenStr, RefreshToken: rfrshTkn} 
+		if err != nil{
+			log.Printf("The error is %v", err)
+			cfg.respondWithError(w, 500, "Issue making token")
+			return
+		}
+
+		resp :=  response{ID: usr.ID, CreatedAt: usr.CreatedAt, UpdatedAt: usr.UpdatedAt, Email: usr.Email, Token: tokenStr, RefreshToken: newRefresh.Token} 
 		cfg.respondWithJSON(w, 200, resp)
 		return
 	}else{
@@ -320,6 +353,88 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request){
 		}
 	}
 	cfg.respondWithJSON(w,200, responses)
+
+}
+
+func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request){
+	//grab access token
+	//then provide new email and password
+	type parameters struct{
+		Password string `json:"password"`
+		Email string `json:"email"`
+	}
+
+	type okResponse struct{
+		ID uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email string `json:"email"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil{
+		log.Printf("Error marshalling data %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	//check that all fields contain relevant info
+	if params.Email == "" || params.Password == ""{
+		cfg.respondWithError(w, 400, "Please provide both email and password.")
+		return
+	}
+
+	//hash the password
+	hashedPassword, err := auth.HashPassword(params.Password)
+	if err != nil{
+		log.Printf("Error hashing password %s", err)
+		w.WriteHeader(500)
+		return 
+	}
+
+	//Have to check that the user has a bearerID that is valid 
+	//get the bearer token from the header
+	//then validate that bearer token 
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == ""{
+		cfg.respondWithError(w, 401, "missing authorization header")
+		return
+	}
+
+	const prefix = "Bearer "
+	
+	if !strings.HasPrefix(authHeader, prefix){
+		cfg.respondWithError(w, 401, "invalid authorization header")
+		return
+	}
+	authToken := strings.TrimPrefix(authHeader, prefix)
+	
+	usrID, err := auth.ValidateJWT(authToken, cfg.jwtSecret)
+	if err != nil{
+		cfg.respondWithError(w, 401, "Unauthorized")
+		return
+	}
+	
+	//update the user credentials
+	newUsr, err := cfg.db.UpdateCredentials(r.Context(), database.UpdateCredentialsParams{
+		Email: params.Email,
+		HashedPassword: hashedPassword,
+		ID: usrID,
+	})
+
+	if err != nil{
+		cfg.respondWithError(w, 500, "Error Updating Credentials")
+		return
+	}
+
+	//now return the new user resource
+
+	resp := okResponse{ID: newUsr.ID, CreatedAt: newUsr.CreatedAt, UpdatedAt: newUsr.UpdatedAt, Email: newUsr.Email}
+
+	cfg.respondWithJSON(w, 200, resp)
+
 
 }
 
