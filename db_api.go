@@ -62,7 +62,7 @@ func (cfg *apiConfig) userHandler(w http.ResponseWriter, r *http.Request){
 	}
 	
 	
-	resp := okResponse{ID: createUser.ID, CreatedAt: createUser.CreatedAt, UpdatedAt: createUser.UpdatedAt, Email: createUser.Email, IsChirpyRed: createUser.IsChirpyRed.Bool}
+	resp := okResponse{ID: createUser.ID, CreatedAt: createUser.CreatedAt, UpdatedAt: createUser.UpdatedAt, Email: createUser.Email, IsChirpyRed: createUser.IsChirpyRed}
 	log.Printf("This is the response %v", resp)
 	cfg.respondWithJSON(w, 201, resp)
 
@@ -202,7 +202,7 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request){
 			return
 		}
 
-		resp :=  response{ID: usr.ID, CreatedAt: usr.CreatedAt, UpdatedAt: usr.UpdatedAt, Email: usr.Email, Token: tokenStr, RefreshToken: newRefresh.Token, IsChirpyRed: usr.IsChirpyRed.Bool} 
+		resp :=  response{ID: usr.ID, CreatedAt: usr.CreatedAt, UpdatedAt: usr.UpdatedAt, Email: usr.Email, Token: tokenStr, RefreshToken: newRefresh.Token, IsChirpyRed: usr.IsChirpyRed} 
 		cfg.respondWithJSON(w, 200, resp)
 		return
 	}else{
@@ -212,7 +212,7 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request){
 }
 
 func (cfg *apiConfig) getChirpByIDHandler( w http.ResponseWriter, r *http.Request){
-
+	
 	type ChirpResp struct {
 		ID uuid.UUID `json:"id"`
 		CreatedAt time.Time `json:"created_at"`
@@ -338,27 +338,62 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request){
 		IsChirpyRed bool `json:"is_chirpy_red"`
 	}
 
-	
-	//get all the chirps resposne from the database
-	chirpsLst, err := cfg.db.GetChirps(r.Context())
+	type parameters struct{
+		AuthorID *uuid.UUID `json:"author_id"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
 	if err != nil{
-		log.Printf("Error creating the user because %s", err)
+		log.Printf("Error marshalling data %s", err)
 		w.WriteHeader(500)
 		return
 	}
 
-	responses := make([]ChirpResp, len(chirpsLst))
-	for i, c := range chirpsLst{
-		responses[i] = ChirpResp{
-			ID:        c.ID,
-        		CreatedAt: c.CreatedAt,
-        		UpdatedAt: c.UpdatedAt,
-        		Body:      c.Body,
-        		UserID:    c.UserID,
+	if params.AuthorID == nil {
+	// author_id was NOT provided
+		chirpsLst, err := cfg.db.GetChirps(r.Context())
+		if err != nil{
+			log.Printf("Error creating the user because %s", err)
+			w.WriteHeader(500)
+			return
 		}
-	}
-	cfg.respondWithJSON(w,200, responses)
 
+		responses := make([]ChirpResp, len(chirpsLst))
+		for i, c := range chirpsLst{
+			responses[i] = ChirpResp{
+				ID:        c.ID,
+        			CreatedAt: c.CreatedAt,
+        			UpdatedAt: c.UpdatedAt,
+        			Body:      c.Body,
+        			UserID:    c.UserID,
+			}
+		}
+		cfg.respondWithJSON(w,200, responses)
+
+	} else {
+		// author_id WAS provided
+		id := *params.AuthorID
+		chirpsLst, err := cfg.db.GetChirpsByAuthor(r.Context(), id)
+		if err != nil{
+			log.Printf("Error creating the user because %s", err)
+			w.WriteHeader(500)
+			return
+		}
+
+		responses := make([]ChirpResp, len(chirpsLst))
+		for i, c := range chirpsLst{
+			responses[i] = ChirpResp{
+				ID:        c.ID,
+        			CreatedAt: c.CreatedAt,
+        			UpdatedAt: c.UpdatedAt,
+        			Body:      c.Body,
+        			UserID:    c.UserID,
+			}
+		}
+		cfg.respondWithJSON(w,200, responses)
+	}
 }
 
 func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request){
@@ -437,7 +472,7 @@ func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request){
 
 	//now return the new user resource
 
-	resp := okResponse{ID: newUsr.ID, CreatedAt: newUsr.CreatedAt, UpdatedAt: newUsr.UpdatedAt, Email: newUsr.Email, IsChirpyRed: newUsr.IsChirpyRed.Bool}
+	resp := okResponse{ID: newUsr.ID, CreatedAt: newUsr.CreatedAt, UpdatedAt: newUsr.UpdatedAt, Email: newUsr.Email, IsChirpyRed: newUsr.IsChirpyRed}
 
 	cfg.respondWithJSON(w, 200, resp)
 
