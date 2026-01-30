@@ -65,11 +65,54 @@ func (cfg *apiConfig) userHandler(w http.ResponseWriter, r *http.Request){
 
 }
 
+func (cfg *apiConfig) revokeHandler(w http.ResponseWriter, r *http.Request){
+	refreshToken := r.Header["Bearer"][0]
+	_, err := cfg.db.MarkTokenRevoked(r.Context(), refreshToken)
+	if err != nil{
+		cfg.respondWithError(w, 401, "Error Revoking Token")
+		return	
+	}
+	w.WriteHeader(204)
+	return
+}
+
+func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, r *http.Request){
+	//get the refreshToken
+	//Once the refresh token is received, look it up in the database
+	//if the toke is found return the token associated with it, if not return 401
+
+	type okResp struct{
+		Token string `json:"token"`
+	}
+	refreshToken := r.Header["Bearer"][0]
+	foundToken, err := cfg.db.GetRefreshToken(r.Context(), refreshToken)
+	if err != nil{
+		cfg.respondWithError(w, 401, "Token does not exist")
+		return
+	}
+
+	if time.Now().After(foundToken.ExpiresAt) {
+		cfg.respondWithError(w, 401, "Refresh Token is expired")
+		return
+	}
+
+	//generate the token for the user 
+	//check if there is a time field
+	tokenStr, err := auth.MakeJWT(foundToken.UserID, cfg.jwtSecret, 1 * time.Hour)
+	if err != nil{
+		cfg.respondWithError(w, 500, "Error making JWT Token")
+		return
+	}
+	
+	resp := okResp{Token: tokenStr}
+	cfg.respondWithJSON(w, 200, resp)
+}
+
+
 func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request){
 	type parameters struct{
 		Password string `json:"password"`
 		Email string `json:"email"`
-		ExpiresInSeconds int `json:"expires_in_seconds"`
 	}
 
 	type response struct{
@@ -78,6 +121,7 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request){
 		UpdatedAt time.Time `json:"updated_at"`
 		Email string `json:"email"`
 		Token string `json:"token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 
 	//unmarshall the parameter data
@@ -103,38 +147,34 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request){
 	
 	//generate the token for the user 
 	//check if there is a time field
-	if params.ExpiresInSeconds == 0{
-		tokenStr, err := auth.MakeJWT(usr.ID, cfg.jwtSecret, 1*time.Hour)
+	tokenStr, err := auth.MakeJWT(usr.ID, cfg.jwtSecret, 1 * time.Hour)
+	if err != nil{
+		cfg.respondWithError(w, 500, "Error making JWT Token")
+		return
+	}
+	if valid{
+		//make the refresh token
+		rfrshTkn, err := auth.MakeRefreshToken()
 		if err != nil{
-			cfg.respondWithError(w, 500, "Error making JWT Token")
+			cfg.respondWithError(w, 500, "Issue making token")
 			return
 		}
-		if valid{
-			resp :=  response{ID: usr.ID, CreatedAt: usr.CreatedAt, UpdatedAt: usr.UpdatedAt, Email: usr.Email, Token: tokenStr} 
-			cfg.respondWithJSON(w, 200, resp)
+		
+		//register the refresh token
+		_, err = cfg.db.CreateRefresh(r.Context(), database.CreateRefreshParams{
+			Token: rfrshTkn, 
+			UserID: usr.ID,
+		})
+
+		resp :=  response{ID: usr.ID, CreatedAt: usr.CreatedAt, UpdatedAt: usr.UpdatedAt, Email: usr.Email, Token: tokenStr, RefreshToken: rfrshTkn} 
+		cfg.respondWithJSON(w, 200, resp)
+		return
 	}else{
 		cfg.respondWithError(w, 401, "Incorrect email or password")
 		return
-	}
-
-	}else{
-		tokenStr, err := auth.MakeJWT(usr.ID, cfg.jwtSecret, time.Duration(params.ExpiresInSeconds) * time.Second)
-		if err != nil{
-			cfg.respondWithError(w, 500, "Error making JWT Token")
-			return
-		}
-		if valid{
-			resp :=  response{ID: usr.ID, CreatedAt: usr.CreatedAt, UpdatedAt: usr.UpdatedAt, Email: usr.Email, Token: tokenStr} 
-			cfg.respondWithJSON(w, 200, resp)
-	}else{
-			cfg.respondWithError(w, 401, "Incorrect email or password")
-			return
-		}
-	}
-	
-	
-
+	}	
 }
+
 func (cfg *apiConfig) getChirpByIDHandler( w http.ResponseWriter, r *http.Request){
 
 	type ChirpResp struct {
