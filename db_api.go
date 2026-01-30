@@ -438,4 +438,56 @@ func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request){
 
 }
 
+func (cfg *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request){
+	//grab access token
+	//then provide new email and password
+	
+	//Have to check that the user has a bearerID that is valid 
+	//get the bearer token from the header
+	//then validate that bearer token
+
+	parsedUUID, err := uuid.Parse(r.PathValue("chirpID"))
+	if err != nil {
+		log.Fatalf("failed to parse UUID string: %v", err)
+	}
+
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == ""{
+		cfg.respondWithError(w, 401, "missing authorization header")
+		return
+	}
+
+	const prefix = "Bearer "
+	
+	if !strings.HasPrefix(authHeader, prefix){
+		cfg.respondWithError(w, 401, "invalid authorization header")
+		return
+	}
+	authToken := strings.TrimPrefix(authHeader, prefix)
+	
+	usrID, err := auth.ValidateJWT(authToken, cfg.jwtSecret)
+	if err != nil{
+		cfg.respondWithError(w, 401, "Unauthorized")
+		return
+	}
+	
+	chirp, err := cfg.db.GetChirpByID(r.Context(), parsedUUID)
+	if err != nil{
+		cfg.respondWithError(w, 404, "Resource not found")
+		return	
+	}
+
+	if usrID != chirp.UserID{
+		cfg.respondWithError(w, 403, "User with Token ID does not match Chirp User ID")
+		return
+	}
+
+	err = cfg.db.DeleteChirpByID(r.Context(), usrID)
+	if err != nil{
+		cfg.respondWithError(w, 500, "Ther was an issue deleting the chirp")
+		return	
+	}
+	//now return the new user resource
+	w.WriteHeader(204)
+}
 
