@@ -505,10 +505,17 @@ func(cfg *apiConfig) upgradeUser(w http.ResponseWriter, r *http.Request){
 			UserID uuid.UUID `json:"user_id"`
 		} `json:"data"`
 	}
-
+	
+	authHead, err := auth.GetAPIKEY(r.Header)
+	log.Printf("This is the authhead %v", authHead)
+	log.Printf("This is the apiKey %v", cfg.polkaKey)
+	if authHead != cfg.polkaKey{
+		cfg.respondWithError(w, 401, "API key not valid")
+		return
+	}
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil{
 		log.Printf("Error marshalling data %s", err)
 		w.WriteHeader(500)
@@ -517,7 +524,7 @@ func(cfg *apiConfig) upgradeUser(w http.ResponseWriter, r *http.Request){
 
 	//check that all fields contain relevant info
 	if params.Event != "user.upgraded"{
-		cfg.respondWithError(w, 204, "Not valid event")
+		cfg.respondWithError(w, 404, "Not valid event")
 		return
 	}
 

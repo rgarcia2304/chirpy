@@ -18,6 +18,7 @@ type apiConfig struct{
 	db *database.Queries
 	platform string
 	jwtSecret string
+	polkaKey string
 }
 
 func (cfg *apiConfig) requestsHandler(w http.ResponseWriter, r *http.Request){
@@ -75,6 +76,7 @@ func main() {
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
 	plat := os.Getenv("PLATFORM")
+	polka := os.Getenv("POLKA_KEY")
 	jwtScrt := os.Getenv("JWT_SECRET")
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil{
@@ -86,7 +88,7 @@ func main() {
 	const port = ":8080"
 	
 	//initialize the fileserverHits
-	apiCfg := apiConfig{db: dbQueries, platform: plat, jwtSecret: jwtScrt}
+	apiCfg := apiConfig{db: dbQueries, platform: plat, jwtSecret: jwtScrt, polkaKey: polka}
 
 	mux := http.NewServeMux()
 	mux.Handle("/app/", apiCfg.middlewareMetricInc(http.StripPrefix("/app", http.FileServer(http.Dir(filePathRoot)))))

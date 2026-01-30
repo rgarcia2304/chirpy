@@ -5,6 +5,7 @@ import(
 	"errors"
 	"net/http"
 	"strings"
+	"fmt"
 )
 
 func HashPassword(password string) (string, error){
@@ -41,4 +42,18 @@ func GetBearerToken(headers http.Header) (string, error){
 	trimmed := strings.Trim(val, "Bearer")
 	trimmed = strings.TrimSpace(trimmed)
 	return trimmed, nil
-}	
+}
+
+func GetAPIKEY(headers http.Header) (string, error){
+	val := headers.Get("Authorization")
+	fmt.Println(val)
+	if val == ""{
+		return "", errors.New("There was not Authorization string provided")
+	}
+
+	//strip the prefix and remove whitespace
+	trimmed := strings.TrimPrefix(val, "ApiKey ")
+	trimmed = strings.TrimSpace(trimmed)
+	fmt.Println(trimmed)
+	return trimmed, nil	
+}
