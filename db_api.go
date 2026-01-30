@@ -9,6 +9,7 @@ import(
 	"github.com/rgarcia2304/chirpy/internal/database"
 	"github.com/rgarcia2304/chirpy/internal/auth"
 	"strings"
+	"fmt"
 )
 
 func (cfg *apiConfig) userHandler(w http.ResponseWriter, r *http.Request){
@@ -22,6 +23,7 @@ func (cfg *apiConfig) userHandler(w http.ResponseWriter, r *http.Request){
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
 		Email string `json:"email"`
+		IsChirpyRed bool `json:"is_chirpy_red"`
 	}
 	
 	decoder := json.NewDecoder(r.Body)
@@ -60,7 +62,7 @@ func (cfg *apiConfig) userHandler(w http.ResponseWriter, r *http.Request){
 	}
 	
 	
-	resp := okResponse{ID: createUser.ID, CreatedAt: createUser.CreatedAt, UpdatedAt: createUser.UpdatedAt, Email: createUser.Email}
+	resp := okResponse{ID: createUser.ID, CreatedAt: createUser.CreatedAt, UpdatedAt: createUser.UpdatedAt, Email: createUser.Email, IsChirpyRed: createUser.IsChirpyRed.Bool}
 	log.Printf("This is the response %v", resp)
 	cfg.respondWithJSON(w, 201, resp)
 
@@ -149,6 +151,7 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request){
 		Email string `json:"email"`
 		Token string `json:"token"`
 		RefreshToken string `json:"refresh_token"`
+		IsChirpyRed bool `json:"is_chirpy_red"`
 	}
 
 	//unmarshall the parameter data
@@ -199,7 +202,7 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request){
 			return
 		}
 
-		resp :=  response{ID: usr.ID, CreatedAt: usr.CreatedAt, UpdatedAt: usr.UpdatedAt, Email: usr.Email, Token: tokenStr, RefreshToken: newRefresh.Token} 
+		resp :=  response{ID: usr.ID, CreatedAt: usr.CreatedAt, UpdatedAt: usr.UpdatedAt, Email: usr.Email, Token: tokenStr, RefreshToken: newRefresh.Token, IsChirpyRed: usr.IsChirpyRed.Bool} 
 		cfg.respondWithJSON(w, 200, resp)
 		return
 	}else{
@@ -260,6 +263,7 @@ func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request
 		UpdatedAt time.Time `json:"updated_at"`
 		Body string `json:"body"`
 		UserID uuid.UUID `json:"user_id"`
+		IsChirpyRed bool `json:"is_chirpy_red"`
 	}
 	
 	decoder := json.NewDecoder(r.Body)
@@ -304,7 +308,7 @@ func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request
 			w.WriteHeader(500)
 			return
 		}
-		resp := ChirpResp{ID: createdChirp.ID, CreatedAt: createdChirp.CreatedAt, UpdatedAt: createdChirp.UpdatedAt, Body: createdChirp.Body, UserID: createdChirp.ID}
+		resp := ChirpResp{ID: createdChirp.ID, CreatedAt: createdChirp.CreatedAt, UpdatedAt: createdChirp.UpdatedAt, Body: createdChirp.Body, UserID: createdChirp.UserID}
 		cfg.respondWithJSON(w, 201, resp)
 	}else{	
 		createdChirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
@@ -317,7 +321,7 @@ func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request
 			w.WriteHeader(500)
 			return
 		}
-		resp := ChirpResp{ID: createdChirp.ID, CreatedAt: createdChirp.CreatedAt, UpdatedAt: createdChirp.UpdatedAt, Body: createdChirp.Body, UserID: createdChirp.ID}	
+		resp := ChirpResp{ID: createdChirp.ID, CreatedAt: createdChirp.CreatedAt, UpdatedAt: createdChirp.UpdatedAt, Body: createdChirp.Body, UserID: createdChirp.UserID}	
 		cfg.respondWithJSON(w, 201, resp)
 	}	
 }
@@ -331,6 +335,7 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request){
 		UpdatedAt time.Time `json:"updated_at"`
 		Body string `json:"body"`
 		UserID uuid.UUID `json:"user_id"`
+		IsChirpyRed bool `json:"is_chirpy_red"`
 	}
 
 	
@@ -369,6 +374,7 @@ func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request){
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
 		Email string `json:"email"`
+		IsChirpyRed bool `json:"is_chirpy_red"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -431,7 +437,7 @@ func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request){
 
 	//now return the new user resource
 
-	resp := okResponse{ID: newUsr.ID, CreatedAt: newUsr.CreatedAt, UpdatedAt: newUsr.UpdatedAt, Email: newUsr.Email}
+	resp := okResponse{ID: newUsr.ID, CreatedAt: newUsr.CreatedAt, UpdatedAt: newUsr.UpdatedAt, Email: newUsr.Email, IsChirpyRed: newUsr.IsChirpyRed.Bool}
 
 	cfg.respondWithJSON(w, 200, resp)
 
@@ -490,4 +496,42 @@ func (cfg *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request){
 	//now return the new user resource
 	w.WriteHeader(204)
 }
+
+func(cfg *apiConfig) upgradeUser(w http.ResponseWriter, r *http.Request){
+	
+	type parameters struct{
+		Event string `json:"event"`
+		Data struct{
+			UserID uuid.UUID `json:"user_id"`
+		} `json:"data"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil{
+		log.Printf("Error marshalling data %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	//check that all fields contain relevant info
+	if params.Event != "user.upgraded"{
+		cfg.respondWithError(w, 204, "Not valid event")
+		return
+	}
+
+	_, err = cfg.db.UpgradeUser(r.Context(), params.Data.UserID)
+	if err != nil{
+		cfg.respondWithError(w, 404, "User not found")
+		return
+	}
+
+	w.WriteHeader(204) // Sets the status code
+	fmt.Fprintf(w, "204 User upgraded") // Writes the body content
+	return
+
+
+	
+}	
 
