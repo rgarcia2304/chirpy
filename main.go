@@ -7,14 +7,13 @@ import(
 	"log"
 	"fmt"
 	"sync/atomic"
-	"encoding/json"
 	"os"
 	"github.com/rgarcia2304/chirpy/internal/database"
 	"github.com/rgarcia2304/chirpy/internal/handlers"
 	"database/sql"
 	"github.com/joho/godotenv"
 )
-type apiConfig struct{
+type ApiConfig struct{
 	fileserverHits atomic.Int32
 	db *database.Queries
 	platform string
@@ -22,54 +21,7 @@ type apiConfig struct{
 	polkaKey string
 }
 
-func (cfg *apiConfig) requestsHandler(w http.ResponseWriter, r *http.Request){
-		w.Header().Set("Content-Type", "text/html")
-		w.WriteHeader(http.StatusOK)
-		message := fmt.Sprintf("<html><body><h1>Welcome Chirpy, Admin </h1><p>Chirpy has visited %d</p></body></html>", cfg.fileserverHits.Load())
-		w.Write([]byte(message))
-}
 
-func (cfg *apiConfig) resetHandler( w http.ResponseWriter, r *http.Request){
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	cfg.fileserverHits.Store(0)
-	message := "Reset Completed"
-	w.Write([]byte(message))
-}
-
-func(cfg *apiConfig) respondWithError(w http.ResponseWriter, code int, msg string){
-	type errResp struct{
-		Error string `json: "error"`
-	}
-
-	respBody := errResp{Error: msg}
-	data, err := json.Marshal(respBody)
-	if err != nil{
-		log.Printf("Error marshalling JSON: %s", err)
-		w.WriteHeader(500)
-		return
-	}
-
-	w.WriteHeader(code)
-	w.Write(data)
-	return
-}
-
-func(cfg *apiConfig) respondWithJSON(w http.ResponseWriter, code int, payload interface{}){
-	w.Header().Set("Content-Type", "application/json")	
-	data, err := json.Marshal(payload)
-	if err != nil{
-		log.Printf("Error marshalling JSON %s", err)
-		w.WriteHeader(500)
-		return
-	}
-	
-	
-    	log.Printf("responding %d with: %s", code, string(data))
-	w.WriteHeader(code)
-	w.Write(data)
-	w.Write([]byte("\n"))
-}
 
 
 func main() {
@@ -89,10 +41,15 @@ func main() {
 	const port = ":8080"
 	
 	//initialize the fileserverHits
-	apiCfg := apiConfig{db: dbQueries, platform: plat, jwtSecret: jwtScrt, polkaKey: polka}
+	apiCfg := handlers.ApiConfig{
+	DB:        dbQueries,
+	Platform:  plat,
+	JWTSecret: jwtScrt,
+	PolkaKey:  polka,
+	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/app/", apiCfg.middlewareMetricInc(http.StripPrefix("/app", http.FileServer(http.Dir(filePathRoot)))))
+	mux.Handle("/app/", apiCfg.MiddlewareMetricInc(http.StripPrefix("/app", http.FileServer(http.Dir(filePathRoot)))))
 	//mux.Handle("/assets", http.FileServer(http.Dir("/assets/")))
 
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request){
@@ -101,23 +58,21 @@ func main() {
 		w.Write([]byte("Ok"))
 	})
 
-	mux.HandleFunc("GET /admin/metrics", apiCfg.requestsHandler)
+	mux.HandleFunc("GET /admin/metrics", apiCfg.RequestsHandler)
 
-	mux.HandleFunc("POST /admin/reset", apiCfg.handlers.userDeleteHandler)
+	mux.HandleFunc("POST /admin/reset", apiCfg.UserDeleteHandler)
 
-	mux.HandleFunc("POST /api/users", apiCfg.userHandler)
+	mux.HandleFunc("POST /api/users", apiCfg.UserHandler)
 
-	mux.HandleFunc("POST /api/chirps", apiCfg.createChirpsHandler)
-	mux.HandleFunc("GET /api/chirps", apiCfg.getChirpsHandler)
-	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.getChirpByIDHandler)
-	mux.HandleFunc("POST /api/login", apiCfg.loginHandler)
-	mux.HandleFunc("POST /api/refresh", apiCfg.refreshHandler)
-	mux.HandleFunc("POST /api/revoke", apiCfg.revokeHandler)
-	mux.HandleFunc("PUT /api/users", apiCfg.updateUser)
-	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.deleteChirp)
-	mux.HandleFunc("POST /api/polka/webhooks", apiCfg.upgradeUser)
-
-
+	mux.HandleFunc("POST /api/chirps", apiCfg.CreateChirpsHandler)
+	mux.HandleFunc("GET /api/chirps", apiCfg.GetChirpsHandler)
+	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.GetChirpByIDHandler)
+	mux.HandleFunc("POST /api/login", apiCfg.LoginHandler)
+	mux.HandleFunc("POST /api/refresh", apiCfg.RefreshHandler)
+	mux.HandleFunc("POST /api/revoke", apiCfg.RevokeHandler)
+	mux.HandleFunc("PUT /api/users", apiCfg.UpdateUser)
+	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.DeleteChirp)
+	mux.HandleFunc("POST /api/polka/webhooks", apiCfg.UpgradeUser)
 
 	s := &http.Server{
 		Addr: port,

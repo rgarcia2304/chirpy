@@ -11,9 +11,19 @@ import(
 	"strings"
 	"fmt"
 	"sort"
+	"sync/atomic"
 )
 
-func (cfg *apiConfig) userHandler(w http.ResponseWriter, r *http.Request){
+type ApiConfig struct {
+	FileserverHits atomic.Int32
+	DB            *database.Queries
+	Platform      string
+	JWTSecret     string
+	PolkaKey      string
+}
+
+
+func (cfg *ApiConfig) UserHandler(w http.ResponseWriter, r *http.Request){
 	type parameters struct{
 		Password string `json:"password"`
 		Email string `json:"email"`
@@ -51,7 +61,7 @@ func (cfg *apiConfig) userHandler(w http.ResponseWriter, r *http.Request){
 	}
 
 	//now incorporate the methods to call the user
-	createUser, err := cfg.db.CreateUser(r.Context(), database.CreateUserParams{
+	createUser, err := cfg.DB.CreateUser(r.Context(), database.CreateUserParams{
 		HashedPassword: hashedPassword,
 		Email: params.Email,
 	})
@@ -69,7 +79,7 @@ func (cfg *apiConfig) userHandler(w http.ResponseWriter, r *http.Request){
 
 }
 
-func (cfg *apiConfig) revokeHandler(w http.ResponseWriter, r *http.Request){
+func (cfg *ApiConfig) RevokeHandler(w http.ResponseWriter, r *http.Request){
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == ""{
 		cfg.respondWithError(w, 401, "missing authorization header")
@@ -84,7 +94,7 @@ func (cfg *apiConfig) revokeHandler(w http.ResponseWriter, r *http.Request){
 	}
 	refreshToken := strings.TrimPrefix(authHeader, prefix)
 
-	_, err := cfg.db.MarkTokenRevoked(r.Context(), refreshToken)
+	_, err := cfg.DB.MarkTokenRevoked(r.Context(), refreshToken)
 	if err != nil{
 		log.Printf("The error is %v", err)
 		cfg.respondWithError(w, 401, "Error Revoking Token")
@@ -94,7 +104,7 @@ func (cfg *apiConfig) revokeHandler(w http.ResponseWriter, r *http.Request){
 	return
 }
 
-func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, r *http.Request){
+func (cfg *ApiConfig) RefreshHandler(w http.ResponseWriter, r *http.Request){
 	//get the refreshToken
 	//Once the refresh token is received, look it up in the database
 	//if the toke is found return the token associated with it, if not return 401
@@ -115,7 +125,7 @@ func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, r *http.Request){
 		return
 	}
 	refreshToken := strings.TrimPrefix(authHeader, prefix)
-	foundToken, err := cfg.db.GetRefreshToken(r.Context(), refreshToken)
+	foundToken, err := cfg.DB.GetRefreshToken(r.Context(), refreshToken)
 	if err != nil{
 		cfg.respondWithError(w, 401, "Token does not exist")
 		return
@@ -128,7 +138,7 @@ func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, r *http.Request){
 
 	//generate the token for the user 
 	//check if there is a time field
-	tokenStr, err := auth.MakeJWT(foundToken.UserID, cfg.jwtSecret, 1 * time.Hour)
+	tokenStr, err := auth.MakeJWT(foundToken.UserID, cfg.JWTSecret, 1 * time.Hour)
 	if err != nil{
 		cfg.respondWithError(w, 500, "Error making JWT Token")
 		return
@@ -139,7 +149,7 @@ func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, r *http.Request){
 }
 
 
-func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request){
+func (cfg *ApiConfig) LoginHandler(w http.ResponseWriter, r *http.Request){
 	type parameters struct{
 		Password string `json:"password"`
 		Email string `json:"email"`
@@ -167,7 +177,7 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request){
 
 	//get the user 
 
-	usr, err := cfg.db.GetUserByEmail(r.Context(), params.Email)
+	usr, err := cfg.DB.GetUserByEmail(r.Context(), params.Email)
 	//now check the password hashes
 	valid, err := auth.CheckPasswordHash(params.Password, usr.HashedPassword)
 	if err != nil{
@@ -178,7 +188,7 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request){
 	
 	//generate the token for the user 
 	//check if there is a time field
-	tokenStr, err := auth.MakeJWT(usr.ID, cfg.jwtSecret, 1 * time.Hour)
+	tokenStr, err := auth.MakeJWT(usr.ID, cfg.JWTSecret, 1 * time.Hour)
 	if err != nil{
 		cfg.respondWithError(w, 500, "Error making JWT Token")
 		return
@@ -192,7 +202,7 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request){
 		}
 		
 		//register the refresh token
-		newRefresh, err := cfg.db.CreateRefresh(r.Context(), database.CreateRefreshParams{
+		newRefresh, err := cfg.DB.CreateRefresh(r.Context(), database.CreateRefreshParams{
 			Token: rfrshTkn, 
 			UserID: usr.ID,
 		})
@@ -212,7 +222,7 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request){
 	}	
 }
 
-func (cfg *apiConfig) getChirpByIDHandler( w http.ResponseWriter, r *http.Request){
+func (cfg *ApiConfig) GetChirpByIDHandler( w http.ResponseWriter, r *http.Request){
 	
 	type ChirpResp struct {
 		ID uuid.UUID `json:"id"`
@@ -226,7 +236,7 @@ func (cfg *apiConfig) getChirpByIDHandler( w http.ResponseWriter, r *http.Reques
 		log.Fatalf("failed to parse UUID string: %v", err)
 	}	
 	log.Printf("The path value is ", r.PathValue("chirpID"))
-	chirp, err := cfg.db.GetChirpByID(r.Context(), parsedUUID)
+	chirp, err := cfg.DB.GetChirpByID(r.Context(), parsedUUID)
 	if err != nil{
 		cfg.respondWithError(w, 404, "Resource not found")
 		return	
@@ -237,13 +247,13 @@ func (cfg *apiConfig) getChirpByIDHandler( w http.ResponseWriter, r *http.Reques
 	cfg.respondWithJSON(w, 200, result)
 }
 
-func (cfg *apiConfig) userDeleteHandler(w http.ResponseWriter, r *http.Request){
+func (cfg *ApiConfig) UserDeleteHandler(w http.ResponseWriter, r *http.Request){
 	//call the delete directly
-	if cfg.platform != "dev"{
+	if cfg.Platform != "dev"{
 		w.WriteHeader(403)
 		return 
 	}
-	err := cfg.db.DeleteUsers(r.Context())
+	err := cfg.DB.DeleteUsers(r.Context())
 	if err != nil{
 		log.Printf("Error creating the user because %s", err)
 		w.WriteHeader(500)
@@ -252,7 +262,7 @@ func (cfg *apiConfig) userDeleteHandler(w http.ResponseWriter, r *http.Request){
 
 }
 
-func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request){
+func (cfg *ApiConfig) CreateChirpsHandler(w http.ResponseWriter, r *http.Request){
 	type parameters struct{
 		Body string `json:"body"`
 		UserID uuid.UUID `json:"user_id"`
@@ -289,7 +299,7 @@ func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request
 		cfg.respondWithError(w, 500, "Error getting Authorization Header")
 		return
 	}
-	_, err = auth.ValidateJWT(authHeader, cfg.jwtSecret)
+	_, err = auth.ValidateJWT(authHeader, cfg.JWTSecret)
 	if err != nil{
 		cfg.respondWithError(w, 401, "Unauthorized")
 		return
@@ -299,7 +309,7 @@ func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request
 	if profane{
 		
 		//create the chirp in the database
-		createdChirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
+		createdChirp, err := cfg.DB.CreateChirp(r.Context(), database.CreateChirpParams{
 			Body: msg, 
 			UserID: params.UserID,
 		})
@@ -312,7 +322,7 @@ func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request
 		resp := ChirpResp{ID: createdChirp.ID, CreatedAt: createdChirp.CreatedAt, UpdatedAt: createdChirp.UpdatedAt, Body: createdChirp.Body, UserID: createdChirp.UserID}
 		cfg.respondWithJSON(w, 201, resp)
 	}else{	
-		createdChirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
+		createdChirp, err := cfg.DB.CreateChirp(r.Context(), database.CreateChirpParams{
 			Body: params.Body, 
 			UserID: params.UserID,
 		})
@@ -327,7 +337,7 @@ func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request
 	}	
 }
 
-func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request){
+func (cfg *ApiConfig) GetChirpsHandler(w http.ResponseWriter, r *http.Request){
 	
 	
 	type ChirpResp struct {
@@ -343,7 +353,7 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request){
 	order := r.URL.Query().Get("sort")
 
 	if authorIDStr == ""{
-		chirpsLst, err := cfg.db.GetChirps(r.Context())
+		chirpsLst, err := cfg.DB.GetChirps(r.Context())
 		if err != nil{
 			log.Printf("Error creating the user because %s", err)
 			w.WriteHeader(500)
@@ -382,7 +392,7 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request){
 			return	
 		}
 
-		chirpsLst, err := cfg.db.GetChirpsByAuthor(r.Context(), parsedUUID)
+		chirpsLst, err := cfg.DB.GetChirpsByAuthor(r.Context(), parsedUUID)
 		if err != nil{
 			log.Printf("Error creating the user because %s", err)
 			w.WriteHeader(500)
@@ -415,7 +425,7 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request){
 	}
 }
 
-func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request){
+func (cfg *ApiConfig) UpdateUser(w http.ResponseWriter, r *http.Request){
 	//grab access token
 	//then provide new email and password
 	type parameters struct{
@@ -471,14 +481,14 @@ func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request){
 	}
 	authToken := strings.TrimPrefix(authHeader, prefix)
 	
-	usrID, err := auth.ValidateJWT(authToken, cfg.jwtSecret)
+	usrID, err := auth.ValidateJWT(authToken, cfg.JWTSecret)
 	if err != nil{
 		cfg.respondWithError(w, 401, "Unauthorized")
 		return
 	}
 	
 	//update the user credentials
-	newUsr, err := cfg.db.UpdateCredentials(r.Context(), database.UpdateCredentialsParams{
+	newUsr, err := cfg.DB.UpdateCredentials(r.Context(), database.UpdateCredentialsParams{
 		Email: params.Email,
 		HashedPassword: hashedPassword,
 		ID: usrID,
@@ -498,7 +508,7 @@ func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request){
 
 }
 
-func (cfg *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request){
+func (cfg *ApiConfig) DeleteChirp(w http.ResponseWriter, r *http.Request){
 	//grab access token
 	//then provide new email and password
 	
@@ -525,13 +535,13 @@ func (cfg *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request){
 	}
 	authToken := strings.TrimPrefix(authHeader, prefix)
 	
-	usrID, err := auth.ValidateJWT(authToken, cfg.jwtSecret)
+	usrID, err := auth.ValidateJWT(authToken, cfg.JWTSecret)
 	if err != nil{
 		cfg.respondWithError(w, 401, "Unauthorized")
 		return
 	}
 	
-	chirp, err := cfg.db.GetChirpByID(r.Context(), parsedUUID)
+	chirp, err := cfg.DB.GetChirpByID(r.Context(), parsedUUID)
 	if err != nil{
 		cfg.respondWithError(w, 404, "Resource not found")
 		return	
@@ -542,7 +552,7 @@ func (cfg *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request){
 		return
 	}
 
-	err = cfg.db.DeleteChirpByID(r.Context(), usrID)
+	err = cfg.DB.DeleteChirpByID(r.Context(), usrID)
 	if err != nil{
 		cfg.respondWithError(w, 500, "Ther was an issue deleting the chirp")
 		return	
@@ -551,7 +561,7 @@ func (cfg *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request){
 	w.WriteHeader(204)
 }
 
-func(cfg *apiConfig) upgradeUser(w http.ResponseWriter, r *http.Request){
+func(cfg *ApiConfig) UpgradeUser(w http.ResponseWriter, r *http.Request){
 	
 	type parameters struct{
 		Event string `json:"event"`
@@ -562,8 +572,8 @@ func(cfg *apiConfig) upgradeUser(w http.ResponseWriter, r *http.Request){
 	
 	authHead, err := auth.GetAPIKEY(r.Header)
 	log.Printf("This is the authhead %v", authHead)
-	log.Printf("This is the apiKey %v", cfg.polkaKey)
-	if authHead != cfg.polkaKey{
+	log.Printf("This is the apiKey %v", cfg.PolkaKey)
+	if authHead != cfg.PolkaKey{
 		cfg.respondWithError(w, 401, "API key not valid")
 		return
 	}
@@ -582,7 +592,7 @@ func(cfg *apiConfig) upgradeUser(w http.ResponseWriter, r *http.Request){
 		return
 	}
 
-	_, err = cfg.db.UpgradeUser(r.Context(), params.Data.UserID)
+	_, err = cfg.DB.UpgradeUser(r.Context(), params.Data.UserID)
 	if err != nil{
 		cfg.respondWithError(w, 404, "User not found")
 		return
@@ -595,4 +605,60 @@ func(cfg *apiConfig) upgradeUser(w http.ResponseWriter, r *http.Request){
 
 	
 }	
+
+func (cfg *ApiConfig) RequestsHandler(w http.ResponseWriter, r *http.Request){
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusOK)
+		message := fmt.Sprintf("<html><body><h1>Welcome Chirpy, Admin </h1><p>Chirpy has visited %d</p></body></html>", cfg.FileserverHits.Load())
+		w.Write([]byte(message))
+}
+
+func (cfg *ApiConfig) ResetHandler( w http.ResponseWriter, r *http.Request){
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	cfg.FileserverHits.Store(0)
+	message := "Reset Completed"
+	w.Write([]byte(message))
+}
+
+func(cfg *ApiConfig) respondWithError(w http.ResponseWriter, code int, msg string){
+	type errResp struct{
+		Error string `json: "error"`
+	}
+
+	respBody := errResp{Error: msg}
+	data, err := json.Marshal(respBody)
+	if err != nil{
+		log.Printf("Error marshalling JSON: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	w.WriteHeader(code)
+	w.Write(data)
+	return
+}
+
+func(cfg *ApiConfig) respondWithJSON(w http.ResponseWriter, code int, payload interface{}){
+	w.Header().Set("Content-Type", "application/json")	
+	data, err := json.Marshal(payload)
+	if err != nil{
+		log.Printf("Error marshalling JSON %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	
+	
+    	log.Printf("responding %d with: %s", code, string(data))
+	w.WriteHeader(code)
+	w.Write(data)
+	w.Write([]byte("\n"))
+}
+
+func (cfg *ApiConfig) MiddlewareMetricInc(next http.Handler) http.Handler{
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request){
+		cfg.FileserverHits.Add(1)
+		next.ServeHTTP(w, r)
+	})
+}
 
