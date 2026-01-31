@@ -1,4 +1,4 @@
-package main
+package handlers
 
 import(
 	"net/http"
@@ -10,6 +10,7 @@ import(
 	"github.com/rgarcia2304/chirpy/internal/auth"
 	"strings"
 	"fmt"
+	"sort"
 )
 
 func (cfg *apiConfig) userHandler(w http.ResponseWriter, r *http.Request){
@@ -339,6 +340,8 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request){
 	}
 
 	authorIDStr := r.URL.Query().Get("author_id")
+	order := r.URL.Query().Get("sort")
+
 	if authorIDStr == ""{
 		chirpsLst, err := cfg.db.GetChirps(r.Context())
 		if err != nil{
@@ -357,11 +360,29 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request){
         			UserID:    c.UserID,
 			}
 		}
+
+		if order == "desc"{
+			sort.Slice(responses, func(i, j int) bool {
+			return responses[i].CreatedAt.After(responses[j].CreatedAt)
+		})
+		}else{
+			sort.Slice(responses, func(i, j int) bool {
+			return responses[i].CreatedAt.Before(responses[j].CreatedAt)	
+		})
+		}
+
 		cfg.respondWithJSON(w,200, responses)
 
 	}else{
 		// author_id WAS provided
-		chirpsLst, err := cfg.db.GetChirpsByAuthor(r.Context(), authorIDStr)
+		parsedUUID, err := uuid.Parse(authorIDStr)
+		if err != nil {
+			log.Printf("Error creating the user because %s", err)
+			w.WriteHeader(500)
+			return	
+		}
+
+		chirpsLst, err := cfg.db.GetChirpsByAuthor(r.Context(), parsedUUID)
 		if err != nil{
 			log.Printf("Error creating the user because %s", err)
 			w.WriteHeader(500)
@@ -378,6 +399,17 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request){
         			UserID:    c.UserID,
 			}
 		}
+
+		if order == "desc"{
+			sort.Slice(responses, func(i, j int) bool {
+			return responses[i].CreatedAt.After(responses[j].CreatedAt)
+		})
+		}else{
+			sort.Slice(responses, func(i, j int) bool {
+			return responses[i].CreatedAt.Before(responses[j].CreatedAt)	
+		})
+		}
+
 		cfg.respondWithJSON(w,200, responses)
 
 	}

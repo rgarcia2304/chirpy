@@ -10,6 +10,7 @@ import(
 	"encoding/json"
 	"os"
 	"github.com/rgarcia2304/chirpy/internal/database"
+	"github.com/rgarcia2304/chirpy/internal/handlers"
 	"database/sql"
 	"github.com/joho/godotenv"
 )
@@ -102,7 +103,7 @@ func main() {
 
 	mux.HandleFunc("GET /admin/metrics", apiCfg.requestsHandler)
 
-	mux.HandleFunc("POST /admin/reset", apiCfg.userDeleteHandler)
+	mux.HandleFunc("POST /admin/reset", apiCfg.handlers.userDeleteHandler)
 
 	mux.HandleFunc("POST /api/users", apiCfg.userHandler)
 
