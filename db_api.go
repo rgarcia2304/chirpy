@@ -338,21 +338,8 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request){
 		IsChirpyRed bool `json:"is_chirpy_red"`
 	}
 
-	type parameters struct{
-		AuthorID *uuid.UUID `json:"author_id"`
-	}
-
-	decoder := json.NewDecoder(r.Body)
-	params := parameters{}
-	err := decoder.Decode(&params)
-	if err != nil{
-		log.Printf("Error marshalling data %s", err)
-		w.WriteHeader(500)
-		return
-	}
-
-	if params.AuthorID == nil {
-	// author_id was NOT provided
+	authorIDStr := r.URL.Query().Get("author_id")
+	if authorIDStr == ""{
 		chirpsLst, err := cfg.db.GetChirps(r.Context())
 		if err != nil{
 			log.Printf("Error creating the user because %s", err)
@@ -372,10 +359,9 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request){
 		}
 		cfg.respondWithJSON(w,200, responses)
 
-	} else {
+	}else{
 		// author_id WAS provided
-		id := *params.AuthorID
-		chirpsLst, err := cfg.db.GetChirpsByAuthor(r.Context(), id)
+		chirpsLst, err := cfg.db.GetChirpsByAuthor(r.Context(), authorIDStr)
 		if err != nil{
 			log.Printf("Error creating the user because %s", err)
 			w.WriteHeader(500)
@@ -393,6 +379,7 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request){
 			}
 		}
 		cfg.respondWithJSON(w,200, responses)
+
 	}
 }
 
